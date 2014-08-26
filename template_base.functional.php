@@ -1,8 +1,293 @@
 <?php
 
 /**
- * This is an attempt to write the keyword modifiers process using functional programming
+ * This is an attempt to write the keyword modifiers process using the functional programming paradigm
  */
+
+/**
+ * @function get_kwds_extract_func() is much like a class constructor.
+ *	     It returns a function for managing template strings. That
+ *	     function, in turn, when handed a template string, returns
+ *	     a function that handles populating the template with the
+ *	     supplied keywords.
+ *
+ * @param string $kwd_delim a single character used to delimit the
+ *	  begining and end of a keyword pattern used by templates. 
+ *	  NOTE: if $kwd_delim is either side of a bracket/brace the
+ *	  	start and end delimiters will be the open and
+ *	  	closing brackets/braces respectively
+ *
+ * @param string $mod_delim a single character used to delimit
+ *	  keyword modifiers
+ *
+ * @param string $mod_param_delim a single character used to delimit
+ *	  keyword modifier paramaters
+ *
+ * @return function a function that takes a template string, extracts
+ * 	   the keywords from the template string and returns a
+ * 	   function that replaces the keywords in the template with
+ * 	   the values supplied to the function
+ */
+function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param_delim = ':' )
+{
+	$params = array( 'kwd_delim' , 'mod_delim' , 'mod_param_delim' );
+
+	// do some validating on all the function paramaters
+	for( $a = 0 ; $a < 3 ; $a += 1 )
+	{
+		if( !is_string( $input ) )
+		{
+			die( "The value for {$params[$a]} is not a string." );
+		}
+		if( strlen($input) !== 1 )
+		{
+			die( "The value for {$params[$a]} (\"{$$params[$a]}\") was more than, or less than one character." );
+		}
+		if( preg_match('/[a-z0-9\s_-]/i') )
+		{
+			die( "The value for {$params[$a]} (\"{$$params[$a]}\") was either an alpha-numeric, character a white-space character, an underscore or a hyphen and cannot be used for this purpose." );
+		}
+
+	}
+
+	// if $kwd_delim is a bracket/brace make the $start_delim and
+	// $end_delim the conventional open/close bracket pair
+	switch( $kwd_delim )
+	{
+		case '{':
+		case '}':	$start_delim = '{';
+	       			$end_delim = '}';
+			       	break;
+
+		case '[':
+		case ']':	$start_delim = '[';
+				$end_delim = ']';
+			       	break;
+
+		case '(':
+		case ')':	$start_delim = '(';
+				$end_delim = ')';
+			       	break;
+
+		case '<':
+		case '>':	$start_delim = '<';
+				$end_delim = '>';
+			       	break;
+
+		default:	$start_delim = $end_delim  = $kwd_delim;
+	}
+
+	if( $mod_delim == $start_delim || $mod_delim == $end_delim )
+	{
+		die( '$mod_delim ('.$mod_delim.') cannot be the same as $kwd_delim ('.$start_delim.' or '.$end_delim.').' );
+	}
+	if( $mod_parm_delim == $start_delim || $mod_param_delim == $end_delim || $mod_param_delim == $mod_delim )
+	{
+		die( '$mod_param_delim ('.$mod_param_delim.') cannot be the same as $kwd_delim ('.$start_delim.' or '.$end_delim.') or $mod_delim ('.$mod_param.')' );
+	}
+
+	// build regexes for matching whole keywords, keyword modifiers and keyword modifier parameters
+	/**
+	 * @var string $kwd_regex Regular Expression for matching whole
+	 *	keywords and modifiers (as a single block) if any.
+	 */
+	$kwd_regex = '`'.preg_quote($start_delim).'([^\s].*?)(?:(?<!\\\\)'.preg_quote($mod_delim).'(.*?))(?<!\\\\)'.preg_quote($end_delim).'`s';
+	/**
+	 * @var string $mod_delim_regex Regular Expression for splitting
+	 *	keyword modifiers
+	 */
+	$mod_delim_regex = '`(?<!\\\\)'.preg_quote($mod_delim).'`s';
+	/**
+	 * @var string $mod_param_delim_regex Regular Expression for
+	 *	splitting keyword modifier parameters
+	 */
+	$mod_param_delim_regex = '`(?<!\\\\)'.preg_quote($mod_param_delim).'`s';
+
+	/**
+	 * @function kwds_extract_func() takes a template string, finds all the
+	 *	     keywords and their modifiers and returns a function that
+	 *	     can be used to populate the template
+	 *
+	 * NOTE: This is effectively a factory method that generates
+	 * 	 populate_template() objects used for populating templates with
+	 * 	 their appropriate keyword values as supplied by an array.
+	 *
+	 * @param string $tmpl a template whose keywords are to be extracted
+	 *
+	 * @return function a function that takes an array of key value pairs
+	 *	   where the key is a keyword and the value is the replacement
+	 *	   for that keyword. The keyword values are then used to replace
+	 *	   the keywords in the template and a string containing the
+	 *	   populated template is returned
+	 */
+	return function( $tmpl , $case_insensitive = true ) use ( $kwd_regex , $mod_delim_regex , $mod_param_delim_regex )
+       	{
+		if( !is_string($tmpl) || $tmpl == '' )
+		{
+			// $tmpl was not a valid template, just return an empty string
+			// when populating
+			return function( $input_array ) { return ''; };
+		}
+
+		if( $case_insensitive != false )
+		{
+			// if case insensitive make all keywords upper case
+			$fix_case = function( &$input )
+			{
+				foreach( $input as $key => $value )
+				{
+					$key_ = strtoupper($key);
+					$input[$key_] = $value;
+					unset($input[$key],$key_);
+				}
+			}
+		}
+		else
+		{
+			// don't do anything
+			$fix_case = function( $input ) { return $input; };
+		}
+
+		if( preg_match_all( $kwd_regex , $tmpl , $keywords , PREG_SET_ORDER ) )
+		{
+			// OK we've got some keywords lets turn them into functions that
+			// can be used to modify (if appropriate) the replacement value of
+			// the keyword
+			for( $a = 0 ; $a < count($keywords) ; $a += 1 )
+			{
+				/**
+				 * @var string $keyword the name of the keyword to be replaced
+				 */
+				$keyword = $keywords[$a][1];
+				/**
+				 * @var string $keyword_str the full keyword including delimiters
+				 *	and modifiers used in the string replacement for the
+				 *	keyword value
+				 */
+				$keyword_str = $keywords[$a][0];
+				/**
+				 * @var string $modifiers the list of unsplit, unprocessed
+				 *	keyword modifiers for that keywor instance
+				 */
+				$modifiers = $keywords[$a][2];
+				if( !isset($kwd_array[$keyword]) )
+				{
+					/**
+					 * @var array $kwd_array a two dimensional array containing the
+					 *	list of keywords as the key to the top level of the array.
+					 *	The second level is keyed to the original keyword string
+					 *	including delimiters and modifiers. The value of the second
+					 *	level is the function that modifies the supplied keyword
+					 *	value before it is inserted into the template.
+					 */
+					$kwd_array[$keyword] = array();
+				}
+
+				if( $modifiers == '' )
+				{
+					// keyword had no modifiers just return the unmodified keyword value
+					$kwd_array[$keyword][$keyword_str] = function($input) { return $input; } );
+				}
+				else
+				{
+					// split the modifiers into an array
+					$modifiers = preg_split( $mod_delim_regex , $modifiers );
+					$mod_func = null;
+					$next = false;
+					for( $a = 0 ; $a < count($modifiers) ; $a += 1 )
+					{
+						// split the modifier into it's name and paramaters
+						$modifier_parts = preg_split( $mod_param_delim_regex , $modifiers[$a] );
+
+						$func = get_kwdmod_func( $modifier_parts );
+
+						// nest modifiers
+						if( $next === true )
+						{
+							$mod_func = function( $input ) use ( $func , $mod_func )
+					       		{
+								return $func($mod_func($input));
+							}
+						}
+						else
+						{
+							$mod_func = function($input) use ( $func )
+					       		{
+								return $func($input);
+							}
+						}
+
+						$next = true;
+					}
+
+					$kwd_array[$keyword][$keyword_str] = $mod_func;
+				}
+			}
+			$fix_case($kwd_array);
+		}
+		else
+		{
+			// no keywords were found, just return the original template when
+			// populating
+			return function( $input_array ) { return $tmpl; };
+		}
+		
+		/**
+		 * @function populate_template() takes an array of strings where the
+		 *	     key matches keywords in the template and the values are
+		 *	     the replacement values for those keywords and returns the
+		 *	     template with the keywords replaced with the appropriate
+		 *	     values.
+		 *
+		 * @param array $input_array a list of key/value pairs where the key
+		 *	  is a keyword found in the template and the value is the
+		 *	   replacement value for that keyword.
+		 *	  NOTE: keywords supplied but not in the template will just be
+		 *	  	ignored
+		 *
+		 * @use string $tmpl raw template string
+		 * @use array $kwd_array list of keywords their original string and
+		 * 	the function that returns the modified value for the supplied
+		 * 	keyword.
+		 *
+		 * @return string template populated by the supplied keywords.
+		 */
+		return function( $input_array ) use ( $tmpl , $kwd_array , $fix_case )
+	       	{
+			if( !is_array($input_array) )
+			{
+				die( '$input_array MUST be an array. '.gettype($input_array).' given.' );
+			}
+			$find = array();
+			$replace = array();
+
+			// if template is case insensitive, make input keywords case
+			// insensitive too
+			$fix_case($input_array);
+
+			foreach( $kwd_array as $key => $value )
+			{
+				if( is_array($value) && !empty($value) )
+				{
+					foreach( $value as $kwd_str => $kwd_func )
+					{
+						$find[] = $kwd_str;
+						if( isset($input_array[$key]) )
+						{
+							$replace[] = $kwd_func($input_array[$key]);
+						}
+						else
+						{
+							$replace[] = '';
+						}
+				}
+			}
+			return str_replace( $find , $replace , $tmpl );
+		}
+	}
+
+}
+
 
 /**
  * @function get_kwdmod_func() returns a function to be
@@ -33,6 +318,11 @@ function get_kwdmod_func( $modifier_parts )
 	{
 		$modifier_name = trim(strolower(preg_replace('`[^a-z]+`','',$modifier_name)));
 		
+		$unescape_kwd_specialchars = function($input)
+		{
+			return str_replace(array('\:','\^','\%'),array(':','^','%'),$input); // unescape keyword special characters
+		}
+
 		switch($modifier_name)
 		{
 			case 'characters':
@@ -92,7 +382,7 @@ function get_kwdmod_func( $modifier_parts )
 						}
 						if( is_int($input) || is_numeric($input) )
 						{ // input is a viable timestamp
-							$action1 = unescape_keyword_specialchars($action1); // unescape keyword special characters
+							$action1 = $unescape_keyword_specialchars($action1); // unescape keyword special characters
 							$input = date( $action1 , $input );
 						}
 						return $input;
@@ -206,7 +496,7 @@ function get_kwdmod_func( $modifier_parts )
 					@preg_match($action1,'');
 					if( preg_last_error() == PREG_NO_ERROR )
 					{
-						$action1 = unescape_keyword_specialchars($action1); // unescape keyword special characters
+						$action1 = $unescape_keyword_specialchars($action1); // unescape keyword special characters
 						if( $modifier_name == 'pregmatch' )
 						{
 							return function($input) use ($action1,$action2,$action3) {
@@ -225,7 +515,7 @@ function get_kwdmod_func( $modifier_parts )
 						}
 						elseif( $modifier_name == 'pregreplace' )
 						{
-							$action2 = unescape_keyword_specialchars($action2); // unescape keyword special characters
+							$action2 = $unescape_keyword_specialchars($action2); // unescape keyword special characters
 							return function($input) use ($action1,$action2) {
 								return preg_replace("`$action1`",$action2,$input);
 							}
@@ -353,172 +643,3 @@ function get_kwdmod_func( $modifier_parts )
 	return function( $input ) { return $input; };
 }
 
-function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param_delim = ':' )
-{
-	$start_delim = '{';
-	$end_delim = '}';
-	$mod_delim = '^';
-	$mod_param_delim = ':';
-
-	$params = array( 'kwd_delim' , 'mod_delim' , 'mod_param_delim' );
-
-	for( $a = 0 ; $a < 3 ; $a += 1 )
-	{
-		if( !is_string( $input ) )
-		{
-			die( "The value for {$params[$a]} is not a string." );
-		}
-		if( strlen($input) !== 1 )
-		{
-			die( "The value for {$params[$a]} (\"{$$params[$a]}\") was more than, or less than one character." );
-		}
-		if( preg_match('/[a-z0-9\s_-]/i') )
-		{
-			die( "The value for {$params[$a]} (\"{$$params[$a]}\") was either an alpha-numeric, character a white-space character, an underscore or a hyphen and cannot be used for this purpose." );
-		}
-
-	}
-
-	
-	switch( $kwd_delim )
-	{
-		case '{':
-		case '}':	$start_delim = '{';
-	       			$end_delim = '}';
-			       	break;
-
-		case '[':
-		case ']':	$start_delim = '[';
-				$end_delim = ']';
-			       	break;
-
-		case '(':
-		case ')':	$start_delim = '(';
-				$end_delim = ')';
-			       	break;
-
-		default:	$start_delim = $end_delim  = $kwd_delim;
-	}
-	if( $mod_delim == $start_delim || $mod_delim == $end_delim )
-	{
-		die( '$mod_delim ('.$mod_delim.') cannot be the same as $kwd_delim ('.$start_delim.' or '.$end_delim.').' );
-	}
-	if( $mod_parm_delim == $start_delim || $mod_param_delim == $end_delim || $mod_param_delim == $mod_delim )
-	{
-		die( '$mod_param_delim ('.$mod_param_delim.') cannot be the same as $kwd_delim ('.$start_delim.' or '.$end_delim.') or $mod_delim ('.$mod_param.')' );
-	}
-	$kwd_regex = '`'.preg_quote($start_delim).'([^\s].*?)(?:(?<!\\\\)'.preg_quote($mod_delim).'(.*?))(?<!\\\\)'.preg_quote($end_delim).'`s';
-	$mod_delim_regex = '`(?<!\\\\)'.preg_quote($mod_delim).'`s';
-	$mod_param_delim_regex = '`(?<!\\\\)'.preg_quote($mod_param_delim).'`s';
-
-	return function( $tmpl ) use ( $kwd_regex , $mod_delim_regex , $mod_param_delim_regex )
-       	{
-		if( !is_string($tmpl) || $tmpl == '' )
-		{
-			return function( $input_array ) { return ''; };
-		}
-
-		if( preg_match_all( $kwd_regex , $tmpl , $keywords , PREG_SET_ORDER ) )
-		{
-			for( $a = 0 ; $a < count($keywords) ; $a += 1 )
-			{
-				$keyword = $keywords[$a][1];
-				$keyword_str = $keywords[$a][0];
-				$modifiers = $keywords[$a][2];
-				if( !isset($kwd_array[$keyword]) )
-				{
-					$kwd_array[$keyword] = array();
-				}
-				$kwd_array[$keyword][] = array( $keyword_str => function($input) { return $input; } );
-				if( $modifiers != '' )
-				{
-					$modifiers = preg_split( $mod_delim_regex , $modifiers );
-					$mod_func = null;
-					$next = false;
-					for( $a = 0 ; $a < count($modifiers) ; $a += 1 )
-					{
-						$modifier_parts = preg_split( $mod_param_delim_regex , $modifiers[$a] );
-						$func = get_kwdmod_func( $modifier_parts );
-
-						// nest modifiers
-						if( $next === true )
-						{
-							$mod_func = function( $input ) use ( $func , $mod_func )
-					       		{
-								return $func($mod_func($input));
-							}
-						}
-						else
-						{
-							$mod_func = function($input) use ( $func )
-					       		{
-								return $func($input);
-							}
-						}
-
-						$next = true;
-					}
-
-					$kwd_array[$keyword][] = array( $keyword_str => $mod_func );
-				}
-			}
-		}
-		else
-		{
-			return function( $input_array ) { return $tmpl; };
-		}
-		
-		/**
-		 * @function takes an array of strings where the key matches keywords
-		 *	     in the template and the values are the replacement values
-		 *	     for those keywords and returns the template with the
-		 *	     keywords replaced with the appropriate values.
-		 *
-		 * @param array $input_array a list of key/value pairs where the key
-		 *	  is a keyword found in the template and the value is the
-		 *	   replacement value for that keyword.
-		 *	  NOTE: keywords supplied but not in the template will just be
-		 *	  	ignored
-		 *
-		 * @use string $tmpl raw template string
-		 * @use array $kwd_array list of keywords their original string and
-		 * 	the function that returns the modified value for the supplied
-		 * 	keyword.
-		 *
-		 * @return string template populated by the supplied keywords.
-		 */
-		return function( $input_array ) use ( $tmpl , $kwd_array )
-	       	{
-			if( !is_array($input_array) )
-			{
-				die( '$input_array MUST be an array. '.gettype($input_array).' given.' );
-			}
-			$find = array();
-			$replace = array();
-			foreach( $kwd_array as $key => $value )
-			{
-				if( is_array($value) && !empty($value) )
-				{
-					foreach( $value as $kwd_str => $kwd_func )
-					{
-						$find[] = $kwd_str;
-						if( isset($input_array[$key]) )
-						{
-							$replace[] = $kwd_func($input_array[$key]);
-						}
-						else
-						{
-							$replace[] = '';
-						}
-				}
-			}
-			return str_replace( $find , $replace , $tmpl );
-		}
-	}
-
-}
-
-function unescape_kwd_specialchars($input)
-{
-	return str_replace(array('\:','\^','\%'),array(':','^','%'),$input); // unescape keyword special characters
-}
