@@ -332,6 +332,20 @@ function get_kwdmod_func( $modifier_parts )
 
 		switch($modifier_name)
 		{
+			case 'add':
+				if( is_numeric($action1) )
+				{
+					$subject = $action1;
+					return function($input) use ( $subject ) {
+						if( is_numeric($input) )
+						{
+							return ( $subject + $input );
+						}
+						return $input;
+					}
+				}
+				break;
+
 			case 'characters':
 			case 'chars':
 			case 'maxchars':
@@ -397,6 +411,34 @@ function get_kwdmod_func( $modifier_parts )
 				}
 				break;
 
+			case 'decrement':
+				if( is_numeric($action1) )
+				{
+					$subject = $action1;
+					return function($input) use ( $subject ) {
+						if( is_numeric($input) )
+						{
+							return ( $input - 1 );
+						}
+						return $input;
+					}
+				}
+				break;
+
+			case 'divide':
+				if( is_numeric($action1) )
+				{
+					$subject = $action1;
+					return function($input) use ( $subject ) {
+						if( is_numeric($input) )
+						{
+							return ( $subject / $input );
+						}
+						return $input;
+					}
+				}
+				break;
+
 			case 'empty':
 				return function($input) use ($action1,$action2) {
 					if( empty($input) ) { return $action1; }
@@ -408,6 +450,20 @@ function get_kwdmod_func( $modifier_parts )
 			case 'heading': // convert to lower case then UPPER CASE first letter in every word
 			case 'titleize': // for mySource matrix compatibility
 				return function($input) { ucwords(strtolower($input)); };
+				break;
+
+			case 'increment':
+				if( is_numeric($action1) )
+				{
+					$subject = $action1;
+					return function($input) use ( $subject ) {
+						if( is_numeric($input) )
+						{
+							return ( $input + 1 );
+						}
+						return $input;
+					}
+				}
 				break;
 
 			case 'lowercase': // convert string to lower case
@@ -451,6 +507,20 @@ function get_kwdmod_func( $modifier_parts )
 							elseif( $action3 !== false ) { return $action3; }
 							else { return $input; }
 						}
+					}
+				}
+				break;
+
+			case 'multiply':
+				if( is_numeric($action1) )
+				{
+					$subject = $action1;
+					return function($input) use ( $subject ) {
+						if( is_numeric($input) )
+						{
+							return ( $subject * $input );
+						}
+						return $input;
 					}
 				}
 				break;
@@ -586,6 +656,20 @@ function get_kwdmod_func( $modifier_parts )
 						,$input
 					);
 				});
+				break;
+
+			case 'subtract':
+				if( is_numeric($action1) )
+				{
+					$subject = $action1;
+					return function($input) use ( $subject ) {
+						if( is_numeric($input) )
+						{
+							return ( $subject - $input );
+						}
+						return $input;
+					}
+				}
 				break;
 
 			case 'sentance': // convert to lower case the uppercase the first character in the string
