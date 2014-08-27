@@ -1,0 +1,7 @@
+template_populate funciton - function
+scope - local , regional , global
+keyword - used to identify where in the template the populated template contents should go.
+columns - how many columns if the template is regional
+remainder - what to do if the number of local items doesn't evenly devide into the number of columns
+img_scale - 
+case_sensitive - whether or not keywords are case sensitive.
