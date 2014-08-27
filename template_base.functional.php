@@ -11,6 +11,10 @@
  *	     a function that handles populating the template with the
  *	     supplied keywords.
  *
+ * NOTE: choosing which template is to be used and handling columns
+ *	 in that template is outside the scope of this function or
+ *	 it's returned functions
+ *
  * @param string $kwd_delim a single character used to delimit the
  *	  begining and end of a keyword pattern used by templates. 
  *	  NOTE: if $kwd_delim is either side of a bracket/brace the
@@ -23,12 +27,15 @@
  * @param string $mod_param_delim a single character used to delimit
  *	  keyword modifier paramaters
  *
+ * @param bool $case_sensitive whether or not to treat keywords as
+ *	  case sensitive.
+ *
  * @return function a function that takes a template string, extracts
  * 	   the keywords from the template string and returns a
  * 	   function that replaces the keywords in the template with
  * 	   the values supplied to the function
  */
-function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param_delim = ':' )
+function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param_delim = ':' , $case_sensitive = false )
 {
 	$params = array( 'kwd_delim' , 'mod_delim' , 'mod_param_delim' );
 
@@ -103,6 +110,25 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 	 */
 	$mod_param_delim_regex = '`(?<!\\\\)'.preg_quote($mod_param_delim).'`s';
 
+	if( $case_sensitive !== true )
+	{
+		// if not case sensitive make all keywords upper case
+		$fix_case = function( &$input )
+		{
+			foreach( $input as $key => $value )
+			{
+				$key_ = strtoupper($key);
+				$input[$key_] = $value;
+				unset($input[$key],$key_);
+			}
+		}
+	}
+	else
+	{
+		// don't do anything
+		$fix_case = function( $input ) { return $input; };
+	}
+
 	/**
 	 * @function kwds_extract_func() takes a template string, finds all the
 	 *	     keywords and their modifiers and returns a function that
@@ -120,32 +146,13 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 	 *	   the keywords in the template and a string containing the
 	 *	   populated template is returned
 	 */
-	return function( $tmpl , $case_insensitive = true ) use ( $kwd_regex , $mod_delim_regex , $mod_param_delim_regex )
+	return function( $tmpl ) use ( $kwd_regex , $mod_delim_regex , $mod_param_delim_regex , $fix_case )
        	{
 		if( !is_string($tmpl) || $tmpl == '' )
 		{
 			// $tmpl was not a valid template, just return an empty string
 			// when populating
 			return function( $input_array ) { return ''; };
-		}
-
-		if( $case_insensitive != false )
-		{
-			// if case insensitive make all keywords upper case
-			$fix_case = function( &$input )
-			{
-				foreach( $input as $key => $value )
-				{
-					$key_ = strtoupper($key);
-					$input[$key_] = $value;
-					unset($input[$key],$key_);
-				}
-			}
-		}
-		else
-		{
-			// don't do anything
-			$fix_case = function( $input ) { return $input; };
 		}
 
 		if( preg_match_all( $kwd_regex , $tmpl , $keywords , PREG_SET_ORDER ) )
@@ -261,7 +268,7 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 			$find = array();
 			$replace = array();
 
-			// if template is case insensitive, make input keywords case
+			// if template is not case sensitive, make input keywords case
 			// insensitive too
 			$fix_case($input_array);
 
