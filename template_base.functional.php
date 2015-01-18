@@ -400,7 +400,7 @@ function get_kwdmod_func( $modifier_parts )
 			case 'cdata':
 				return function( $input ) {
 					return "<![CDATA[$input]]>";
-				}
+				};
 				break;
 
 			case 'ceil':
@@ -575,15 +575,66 @@ function get_kwdmod_func( $modifier_parts )
 //			case 'eq': // see 'match'
 //			case 'equals': // see 'match'
 
+//			case 'escapehtml' see htmlspecialchars
+
 // 			case 'floor': see 'ceil'
 
 //			case 'formatdate': see 'dateformat'
+
+			case 'gt':
+			case 'gte':
+			case 'lt':
+			case 'lte':
+				switch($modifier_name)
+				{
+					case 'gt':
+						$func = function( $first , $second ) { return ( $first > $second ); };
+						break;
+					case 'gte':
+						$func = function( $first , $second ) { return ( $first >= $second ); };
+						break;
+					case 'lt':
+						$func = function( $first , $second ) { return ( $first < $second ); };
+						break;
+					case 'lte':
+						$func = function( $first , $second ) { return ( $first <= $second ); };
+						break;
+				}
+				if( is_numeric($action1) )
+				{
+					if( $action3 !== false )
+					{
+						return function( $input ) use ( $func , $action1 , $action2 , $action3 ) {
+							if( is_numeric($input) )
+							{
+								if( $func( $input , $action1 ) ) { return $action2; }
+								else { return $action3; }
+							}
+							else
+							{
+								return $input;
+							}
+						};
+					}
+					else
+					{
+						return function( $input ) use ( $func , $action1 , $action2 ) {
+							if( is_numeric($input) && $func( $input , $action1 ) ) { return $action2; }
+							else { return $input; }
+						};
+					}
+				}
+				break;
 
 			case 'heading': // convert to lower case then UPPER CASE first letter in every word
 			case 'titleize': // for mySource matrix compatibility
 				return function($input) { return ucwords(strtolower($input)); };
 				break;
 
+			case 'htmlspecialchars':
+			case 'escapehtml':
+				return function( $input ) { return htmlspecialchars($input); };
+				break;
 //			case 'id' see 'csssafe'
 
 			case 'increment':
