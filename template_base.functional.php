@@ -16,7 +16,7 @@
  *	 it's returned functions
  *
  * @param string $kwd_delim a single character used to delimit the
- *	  begining and end of a keyword pattern used by templates. 
+ *	  begining and end of a keyword pattern used by templates.
  *	  NOTE: if $kwd_delim is either side of a bracket/brace the
  *	  	start and end delimiters will be the open and
  *	  	closing brackets/braces respectively
@@ -37,91 +37,140 @@
  */
 function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param_delim = ':' , $case_sensitive = false )
 {
+
 	$params = array( 'kwd_delim' , 'mod_delim' , 'mod_param_delim' );
 
 	// do some validating on all the function paramaters
 	for( $a = 0 ; $a < 3 ; $a += 1 )
 	{
+		$param_name = $params[$a];
+		$input = $$param_name;
 		if( !is_string( $input ) )
 		{
-			die( "The value for {$params[$a]} is not a string." );
+			die( "The value for $param_name is not a string." );
 		}
-		if( strlen($input) !== 1 )
+		$input_len = strlen($input);
+		if( $input_len < 1 )
 		{
-			die( "The value for {$params[$a]} (\"{$$params[$a]}\") was more than, or less than one character." );
+			die( "The value for $param_name (\"$input\") was less than one character." );
 		}
-		if( preg_match('/[a-z0-9\s_-]/i') )
+		if( $a > 0 && $input_len > 1 )
 		{
-			die( "The value for {$params[$a]} (\"{$$params[$a]}\") was either an alpha-numeric, character a white-space character, an underscore or a hyphen and cannot be used for this purpose." );
+			die( "The value for $param_name (\"$input\") was more than." );
 		}
-
+		if( preg_match('/[a-z0-9\s_-]/i',$input) )
+		{
+			die( "The value for $param_name (\"$input\") was either an alpha-numeric, character a white-space character, an underscore or a hyphen and cannot be used for this purpose." );
+		}
 	}
 
-	// if $kwd_delim is a bracket/brace make the $start_delim and
-	// $end_delim the conventional open/close bracket pair
-	switch( $kwd_delim )
+	if( !is_bool($case_sensitive) )
 	{
-		case '{':
-		case '}':	$start_delim = '{';
-	       			$end_delim = '}';
-			       	break;
-
-		case '[':
-		case ']':	$start_delim = '[';
-				$end_delim = ']';
-			       	break;
-
-		case '(':
-		case ')':	$start_delim = '(';
-				$end_delim = ')';
-			       	break;
-
-		case '<':
-		case '>':	$start_delim = '<';
-				$end_delim = '>';
-			       	break;
-
-		default:	$start_delim = $end_delim  = $kwd_delim;
+		$case_sensitive = false;
 	}
+
+	// some templating systems use multiple characters as delimiters for their keywords
+	// to enable this we take a single delimiter and extrapolate it into opening and
+	//  closing delimiters which are mirror images of each other.
+	if( is_string($kwd_delim) && preg_match_all('`[^a-z0-9\s_-]`',$kwd_delim,$delim_bits) )
+	{
+		$start_delim = '';
+		$end_delim = '';
+		$open = null;
+		$a = '';
+		$b = '';
+		$open_close = array( '{' => '}' , '<' => '>' , '[' => ']' , '(' => ')' );
+		$die_msg = 'cannot use an open bracket as part of a delimiter that uses a closed bracket in the same delimiter';
+		for( $c = 0 ; $c < count($delim_bits[0]) ; $c += 1 )
+		{
+			if( isset( $open_close[$delim_bits[0][$c]] ) && $open !== false )
+			{
+				if( $open !== false )
+				{
+					$open_ = true;
+					$_a = $delim_bits[0][$c];
+					$_b = $open_close[$delim_bits[0][$c]];
+				}
+				else
+				{
+					die( $die_msg );
+				}
+			}
+			elseif( $_a = array_search( $delim_bits[0][$c],$open_close ) && $open !== true )
+			{
+				if( $open !== true )
+				{
+					$open_ = false;
+					$_b = $delim_bits[0][$c];
+				}
+				else
+				{
+					die( $die_msg );
+				}
+			}
+			elseif( $open === null )
+			{
+				$open_ = null;
+				$_b = $_a = $delimb_bits[0][$c];
+			}
+			$start_delim .= $_a;
+			$end_delim = $_b.$end_delim;
+		}
+		if( $start_delim == '' || $end_delim == '' )
+		{
+			die( "'$kwd_delim' contained illegal characters or no characters at all." );
+		}
+	}
+
 
 	if( $mod_delim == $start_delim || $mod_delim == $end_delim )
 	{
 		die( '$mod_delim ('.$mod_delim.') cannot be the same as $kwd_delim ('.$start_delim.' or '.$end_delim.').' );
 	}
-	if( $mod_parm_delim == $start_delim || $mod_param_delim == $end_delim || $mod_param_delim == $mod_delim )
+	if( $mod_param_delim == $start_delim || $mod_param_delim == $end_delim || $mod_param_delim == $mod_delim )
 	{
 		die( '$mod_param_delim ('.$mod_param_delim.') cannot be the same as $kwd_delim ('.$start_delim.' or '.$end_delim.') or $mod_delim ('.$mod_param.')' );
 	}
+
+
+	/**
+	 * @var string $mod_delim_regex Regular Expression for splitting
+	 *	keyword modifiers
+	 */
+	$mod_delim_regex = '(?<!\\\\\\\\)'.preg_quote($mod_delim);
+
 
 	// build regexes for matching whole keywords, keyword modifiers and keyword modifier parameters
 	/**
 	 * @var string $kwd_regex Regular Expression for matching whole
 	 *	keywords and modifiers (as a single block) if any.
 	 */
-	$kwd_regex = '`'.preg_quote($start_delim).'([^\s].*?)(?:(?<!\\\\)'.preg_quote($mod_delim).'(.*?))(?<!\\\\)'.preg_quote($end_delim).'`s';
-	/**
-	 * @var string $mod_delim_regex Regular Expression for splitting
-	 *	keyword modifiers
-	 */
-	$mod_delim_regex = '`(?<!\\\\)'.preg_quote($mod_delim).'`s';
+	$kwd_regex = '`'.preg_quote($start_delim).'([^\s].*?)(?:'.$mod_delim_regex.'(.*?))?(?<!\\\\\\\\)'.preg_quote($end_delim).'`s';
+
 	/**
 	 * @var string $mod_param_delim_regex Regular Expression for
 	 *	splitting keyword modifier parameters
 	 */
-	$mod_param_delim_regex = '`(?<!\\\\)'.preg_quote($mod_param_delim).'`s';
+	$mod_param_delim_regex = '`(?<!\\\\\\\\)'.preg_quote($mod_param_delim).'`s';
+
+	$mod_delim_regex = "`$mod_delim_regex`s";
+
+	if( $case_sensitive === true )
+	{
+		$kwd_regex .= 'i';
+	}
 
 	if( $case_sensitive !== true )
 	{
 		// if not case sensitive make all keywords upper case
-		$fix_case = function( &$input )
-		{
+		$fix_case = function( &$input ) {
 			foreach( $input as $key => $value )
 			{
 				$key_ = strtoupper($key);
 				$input[$key_] = $value;
 				unset($input[$key],$key_);
 			}
-		}
+		};
 	}
 	else
 	{
@@ -147,7 +196,8 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 	 *	   populated template is returned
 	 */
 	return function( $tmpl ) use ( $kwd_regex , $mod_delim_regex , $mod_param_delim_regex , $fix_case )
-       	{
+    {
+
 		if( !is_string($tmpl) || $tmpl == '' )
 		{
 			// $tmpl was not a valid template, just return an empty string
@@ -176,7 +226,7 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 				 * @var string $modifiers the list of unsplit, unprocessed
 				 *	keyword modifiers for that keywor instance
 				 */
-				$modifiers = $keywords[$a][2];
+				$modifiers = isset($keywords[$a][2])?$keywords[$a][2]:'';
 				if( !isset($kwd_array[$keyword]) )
 				{
 					/**
@@ -193,7 +243,7 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 				if( $modifiers == '' )
 				{
 					// keyword had no modifiers just return the unmodified keyword value
-					$kwd_array[$keyword][$keyword_str] = function($input) { return $input; } );
+					$kwd_array[$keyword][$keyword_str] = function($input){ return $input; };
 				}
 				else
 				{
@@ -201,29 +251,26 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 					$modifiers = preg_split( $mod_delim_regex , $modifiers );
 					$mod_func = null;
 					$next = false;
-					for( $a = 0 ; $a < count($modifiers) ; $a += 1 )
+					for( $b = 0 ; $b < count($modifiers) ; $b += 1 )
 					{
 						// split the modifier into it's name and paramaters
-						$modifier_parts = preg_split( $mod_param_delim_regex , $modifiers[$a] );
+						$modifier_parts = preg_split( $mod_param_delim_regex , $modifiers[$b] );
 
 						$func = get_kwdmod_func( $modifier_parts );
 
 						// nest modifiers
 						if( $next === true )
 						{
-							$mod_func = function( $input ) use ( $func , $mod_func )
-					       		{
-								return $func($mod_func($input));
-							}
+							$tmp_mod_func = function( $input ) use ( $func , $mod_func )
+							{
+								return $func( $mod_func($input) );
+							};
+							$mod_func = $tmp_mod_func;
 						}
 						else
 						{
-							$mod_func = function($input) use ( $func )
-					       		{
-								return $func($input);
-							}
+							$mod_func = $func;
 						}
-
 						$next = true;
 					}
 
@@ -236,9 +283,9 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 		{
 			// no keywords were found, just return the original template when
 			// populating
-			return function( $input_array ) { return $tmpl; };
+			return function( $input_array ) use ( $tmpl ) { return $tmpl; };
 		}
-		
+
 		/**
 		 * @function populate_template() takes an array of strings where the
 		 *	     key matches keywords in the template and the values are
@@ -259,8 +306,9 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 		 *
 		 * @return string template populated by the supplied keywords.
 		 */
-		return function( $input_array ) use ( $tmpl , $kwd_array , $fix_case )
-	       	{
+		return function( $input_array = array() ) use ( $tmpl , $kwd_array , $fix_case )
+		{
+
 			if( !is_array($input_array) )
 			{
 				die( '$input_array MUST be an array. '.gettype($input_array).' given.' );
@@ -287,11 +335,13 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 						{
 							$replace[] = '';
 						}
+					}
 				}
 			}
+
 			return str_replace( $find , $replace , $tmpl );
-		}
-	}
+		};
+	};
 
 }
 
@@ -323,50 +373,80 @@ function get_kwdmod_func( $modifier_parts )
 
 	if( is_string($modifier_name) )
 	{
-		$modifier_name = trim(strolower(preg_replace('`[^a-z]+`','',$modifier_name)));
-		
+		$modifier_name = trim(strtolower(preg_replace('`[^a-z]+`','',$modifier_name)));
+
 		$unescape_kwd_specialchars = function($input)
 		{
 			return str_replace(array('\:','\^','\%'),array(':','^','%'),$input); // unescape keyword special characters
-		}
+		};
 
 		switch($modifier_name)
 		{
 			case 'add':
 				if( is_numeric($action1) )
 				{
-					$subject = $action1;
-					return function($input) use ( $subject ) {
+					return function($input) use ( $action1 ) {
 						if( is_numeric($input) )
 						{
-							return ( $subject + $input );
+							return ( $action1 + $input );
 						}
 						return $input;
-					}
+					};
 				}
 				break;
 
-			case 'characters':
+//			case 'capitalize': see 'sentance'
+
+			case 'cdata':
+				return function( $input ) {
+					return "<![CDATA[$input]]>";
+				}
+				break;
+
+			case 'ceil':
+			case 'floor':// for mySource matrix compatibility
+				return function( $input ) use ( $modifier_name ) {
+					if( is_numeric($input) )
+					{
+						return $modifier_name($input);
+					}
+					return $input;
+				};
+				break;
+
+			case 'characters': // strips all code then
 			case 'chars':
 			case 'maxchars':
-				$maxlength = 1000;
 				if( is_numeric($action1) && $action1 > 0 )
 				{
-					$maxlength = $action1;
-				}
-				$stripcode = get_kwdmod_func('text',$action2);
-				return function($input) use ($maxlength) {
-						$input = $stripcode($input);
-						if( strlen($input) > $maxlength ) {
-						       	$input = substr($input,0,$maxlenght);
-						}
-						return $input;
+					if( $action2 === false )
+					{
+						return function($input) use ($action1) {
+							$input = $stripcode($input);
+							if( strlen($input) > $action1 ) {
+									$input = substr($input,0,$action1);
+							}
+							return $input;
+						};
 					}
+					else
+					{
+						return function($input) use ($action1) {
+							if( strlen($input) > $action1 ) {
+									$input = substr($input,0,$action1);
+							}
+							return $input;
+						};
+					}
+				}
 				break;
 
+			case 'charcount':
+				return function( $input ) { return strlen($input); };
+				break;
 
-			case 'class':	// make ok for use as value in Class
-			case 'csssafe':
+			case 'csssafe':	// make ok for use as value in Class
+			case 'class':
 			case 'id':	// make ok for use as value in ID
 					// (NOTE: functional programming requires functions to be stateless
 					//	  to create IDs the function would need to be aware of all
@@ -392,6 +472,26 @@ function get_kwdmod_func( $modifier_parts )
 				};
 				break;
 
+			case 'contains':
+				if( is_string($action1) && $action1 != '' )
+				{
+					if( $action3 !== false )
+					{
+						return function($input) use ($action1,$action2,$action3) {
+							if( substr_count($input,$action1) > 0 ) { return $action2; }
+							else { return $action3; }
+						};
+					}
+					else
+					{
+						return function($input) use ($action1,$action2) {
+							if( substr_count($input,$action1) > 0 ) { return $action2; }
+							else { return $input; }
+						};
+					}
+				}
+				break;
+
 			case 'dateformat':
 			case 'formatdate':
 				if( is_string($action1) && $action1 != '' )
@@ -407,22 +507,18 @@ function get_kwdmod_func( $modifier_parts )
 							$input = date( $action1 , $input );
 						}
 						return $input;
-					}
+					};
 				}
 				break;
 
 			case 'decrement':
-				if( is_numeric($action1) )
-				{
-					$subject = $action1;
-					return function($input) use ( $subject ) {
-						if( is_numeric($input) )
-						{
-							return ( $input - 1 );
-						}
-						return $input;
+				return function($input) {
+					if( is_numeric($input) )
+					{
+						return ( $input - 1 );
 					}
-				}
+					return $input;
+				};
 				break;
 
 			case 'divide':
@@ -435,78 +531,93 @@ function get_kwdmod_func( $modifier_parts )
 							return ( $subject / $input );
 						}
 						return $input;
+					};
+				}
+				break;
+
+			case 'doesntcontains':
+				if( is_string($action1) && $action1 != '' )
+				{
+					if( $action3 !== false )
+					{
+						return function($input) use ($action1,$action2,$action3) {
+							if( substr_count($input,$action1) == 0 ) { return $action2; }
+							else { return $action3; }
+						};
+					}
+					else
+					{
+						return function($input) use ($action1,$action2) {
+							if( substr_count($input,$action1) == 0 ) { return $action2; }
+							else { return $input; }
+						};
 					}
 				}
 				break;
 
 			case 'empty':
-				return function($input) use ($action1,$action2) {
-					if( empty($input) ) { return $action1; }
-					elseif( $action2 !== false ) { return $action2; }
-					else { return $input; }
+				if( $action2 !== false )
+				{
+					return function($input) use ($action1,$action2) {
+						if( empty($input) ) { return $action1; }
+						else { return $action2; }
+					};
+				}
+				else
+				{
+					return function($input) use ($action1,$action2) {
+						if( empty($input) ) { return $action1; }
+						else { return $input; }
+					};
 				}
 				break;
+
+//			case 'eq': // see 'match'
+//			case 'equals': // see 'match'
+
+// 			case 'floor': see 'ceil'
+
+//			case 'formatdate': see 'dateformat'
 
 			case 'heading': // convert to lower case then UPPER CASE first letter in every word
 			case 'titleize': // for mySource matrix compatibility
-				return function($input) { ucwords(strtolower($input)); };
+				return function($input) { return ucwords(strtolower($input)); };
 				break;
 
+//			case 'id' see 'csssafe'
+
 			case 'increment':
-				if( is_numeric($action1) )
-				{
-					$subject = $action1;
-					return function($input) use ( $subject ) {
-						if( is_numeric($input) )
-						{
-							return ( $input + 1 );
-						}
-						return $input;
+				return function($input) {
+					if( is_numeric($input) )
+					{
+						return ( $input + 1 );
 					}
-				}
+					return $input;
+				};
 				break;
 
 			case 'lowercase': // convert string to lower case
-				return function($input) { strtolower($replace); };
+				return function($input) { return strtolower($input); };
 				break;
 
-			case 'contains':
-			case 'doesntcontains':
 			case 'match':
-			case 'notmatch':
-				if( is_string($action1) && $action1 != '' )
+			case 'eq':
+			case 'equals':
+				if( is_string($action1) )
 				{
-					if( $modifier_name == 'contains' )
-					{
-						return function($input) use ($action1,$action2,$action3) {
-							if( substr_count($input,$action1) > 0 ) { return $action2; }
-							elseif( $action3 !== false ) { return $action3; }
-							else { return $input; }
-						}
-					}
-					elseif( $modifier_name == 'doesntcontain' )
-					{
-						return function($input) use ($action1,$action2,$action3) {
-							if( substr_count($input,$action1) == 0 ) { return $action2; }
-							elseif( $action3 !== false ) { return $action3; }
-							else { return $input; }
-						}
-					}
-					elseif( $modifier_name == 'notmatch')
+					if( $action3 !== false )
 					{
 						return function($input) use ($action1,$action2,$action3) {
 							if( $action1 != $input ) { return $action2; }
-							elseif( $action3 !== false ) { return $action3; }
-							else { return $input; }
-						}
+							else { return $action3; }
+						};
 					}
 					else
 					{
-						return function($input) use ($action1,$action2,$action3) {
+						return function($input) use ($action1,$action2) {
 							if( $action1 == $input ) { return $action2; }
-							elseif( $action3 !== false ) { return $action3; }
 							else { return $input; }
-						}
+						};
 					}
 				}
 				break;
@@ -521,13 +632,15 @@ function get_kwdmod_func( $modifier_parts )
 							return ( $subject * $input );
 						}
 						return $input;
-					}
+					};
 				}
 				break;
 
+//			case 'maxchars': see 'characters'
+
+			case 'maxsentance':
 			case 'maxwords':
 			case 'words':
-			case 'maxsentance':
 				if( is_numeric($action1) )
 				{
 					$action1 = round(trim($action1));
@@ -542,15 +655,32 @@ function get_kwdmod_func( $modifier_parts )
 					}
 					else
 					{
-						$regex = '`^([-\w]+(?:\W+[-\w]+){0,'.$action1.'}).*$`is'
+						$regex = '`^([-\w]+(?:\W+[-\w]+){0,'.$action1.'}).*$`is';
 					}
 					return function($input) use ($regex) { return preg_replace( $regex , '\1' , $stripcode($input) ); };
 				}
 				break;
 
-			case 'nocomment': // strip HTML comments
-			case 'stripcomment':	// strips HTML comments
-				return function( $input ) { return preg_replace('`<!--.*?-->|/\*.*?\*/`s','',$input); };
+//			case 'nocomment': see 'stripcomment'
+
+			case 'notmatch':
+				if( is_string($action1) && $action1 != '' )
+				{
+					if( $action3 !== false )
+					{
+						return function($input) use ($action1,$action2,$action3) {
+							if( $action1 == $input ) { return $action2; }
+							else { return $action3; }
+						};
+					}
+					else
+					{
+						return function($input) use ($action1,$action2) {
+							if( $action1 == $input ) { return $action2; }
+							else { return $input; }
+						};
+					}
+				}
 				break;
 
 			case 'nomultispace': // make multiple spaces (including lines and tabs) into a single space
@@ -559,15 +689,28 @@ function get_kwdmod_func( $modifier_parts )
 				break;
 
 			case 'notempty':
-				return function($input) use ($action1,$action2) {
-					if( !empty($input) ) { return $action1; }
-					elseif( $action2 !== false ) { return $action2; }
-					else { return $input; }
-				};
+				if( $action2 !== false )
+				{
+					return function($input) use ($action1,$action2) {
+						if( !empty($input) ) { return $action1; }
+						else { return $action2; }
+					};
+				}
+				else
+				{
+					return function($input) use ($action1,$action2) {
+						if( !empty($input) ) { return $action1; }
+						else { return $input; }
+					};
+				}
 				break;
+
+
+//			case 'plaintext': see 'text'
 
 			case 'pregmatch':
 			case 'pregreplace':
+			case 'notpregmatch':
 				if( is_string($action1) && $action1 != '' )
 				{
 					@preg_match($action1,'');
@@ -576,30 +719,84 @@ function get_kwdmod_func( $modifier_parts )
 						$action1 = $unescape_keyword_specialchars($action1); // unescape keyword special characters
 						if( $modifier_name == 'pregmatch' )
 						{
-							return function($input) use ($action1,$action2,$action3) {
-								if( preg_match("`$action1`s",$input)) { return $action2; }
-								elseif( $action3 !== false ) { return $action3; }
-								else { return $input; }
+							if( $action3 !== false )
+							{
+								return function($input) use ($action1,$action2,$action3) {
+									if( preg_match($action1,$input)) { return $action2; }
+									else { return $action3; }
+								};
+							}
+							else
+							{
+								function($input) use ($action1,$action2) {
+									if( preg_match($action1,$input)) { return $action2; }
+									else { return $input; }
+								};
 							}
 						}
 						elseif( $modifier_name == 'notpregmatch' )
 						{
-							return function($input) use ($action1,$action2,$action3) {
-								if( !preg_match("`$action1`s",$input)) { return $action2; }
-								elseif( $action3 !== false ) { return $action3; }
-								else { return $input; }
+							if( $action3 !== false )
+							{
+								return function($input) use ($action1,$action2,$action3) {
+									if( !preg_match($action1,$input)) { return $action2; }
+									else { return $action3; }
+								};
+							}
+							else
+							{
+								return function($input) use ($action1,$action2) {
+									if( !preg_match($action1,$input)) { return $action2; }
+									else { return $input; }
+								};
 							}
 						}
 						elseif( $modifier_name == 'pregreplace' )
 						{
-							$action2 = $unescape_keyword_specialchars($action2); // unescape keyword special characters
-							return function($input) use ($action1,$action2) {
-								return preg_replace("`$action1`",$action2,$input);
+							if( $action2 !== false )
+							{
+								$action2 = $unescape_keyword_specialchars($action2); // unescape keyword special characters
 							}
+							else
+							{
+								$action2 = '';
+							}
+							return function($input) use ($action1,$action2) {
+								return preg_replace($action1,$action2,$input);
+							};
 						}
 					}
 				}
 				break;
+
+			case 'round':
+				if( is_numeric($action1) )
+				{
+					settype($action1,'float');
+				}
+				else
+				{
+					$action1 = 0;
+				}
+				return function( $input ) use ( $action1 , $modifier_name ) {
+					if( is_numeric($input) )
+					{
+						return round($input,$action1);
+					}
+					return $input;
+				};
+				break;
+
+
+//			case 'singlespace': see 'nomultispace'
+
+			case 'stripcomment': // strips HTML comments
+			case 'nocomment':
+				return function( $input ) { return preg_replace('`<!--.*?-->|/\*.*?\*/`s','',$input); };
+				break;
+
+			case 'striphtml':
+				return function( $input ) { return strip_tags($input); };
 
 			case 'stripimage':	// strips image tags
 				return function( $input ) { return preg_replace('`<img[^>]*>`si','',$input); };
@@ -618,12 +815,16 @@ function get_kwdmod_func( $modifier_parts )
 				break;
 
 			case 'striponevent':	// strips javascript event attributes from within elements
-				// TODO work out how to use callback functions in functional programming 
-				return function($input) { return preg_replace_callback( '`(<[a-z]+\s+)([^>]+)(?=>)`i' , function($matches) {
-						return $matches[1].preg_replace( '`\s+on[a-z]+=(\'|").*?\1`i','',$matches[2]);
-					}
-					,$input
-				)};
+				// TODO work out how to use callback functions in functional programming
+				return function($input) {
+					return preg_replace_callback(
+						'`(<[a-z]+\s+)([^>]+)(?=>)`i'
+						,function($matches) {
+							return $matches[1].preg_replace( '`\s+on[a-z]+=(\'|").*?\1`i','',$matches[2]);
+						}
+						,$input
+					);
+				};
 				break;
 
 			case 'stripscript':	// strips javascript tags and their contents
@@ -649,13 +850,34 @@ function get_kwdmod_func( $modifier_parts )
 							 '`[\t ]+(?=[\r\n])`'
 							,'`((?:\r\n|\n\r|\r|\n){'.$max_lines.'})(?:\r\n|\n\r|\r|\n)+`'
 						 )
-						 array(
+						,array(
 							 ''
 							,'\1'
 						 )
 						,$input
 					);
-				});
+				};
+				break;
+
+//			case 'plaintext': see 'text'
+
+			case 'sentance': // convert to lower case the uppercase the first character in the string
+			case 'capitalize': // for mySource matrix compatibility
+				return function($input) {
+			       	preg_replace_callback(
+						 '`(?<=^|[.?!])(\s+)([a-z])(?=[a-z]*)`i'
+						,function( $matches ) {
+							return $matches[1].strtoupper($matches[2]);
+						}
+						,$input
+					);
+				};
+				break;
+
+//			case 'singlespace': see 'nomultispace'
+
+			case 'space': // convert underscores to spaces
+				return function($input) { return str_replace('_',' ',$input); };
 				break;
 
 			case 'subtract':
@@ -668,27 +890,12 @@ function get_kwdmod_func( $modifier_parts )
 							return ( $subject - $input );
 						}
 						return $input;
-					}
+					};
 				}
 				break;
 
-			case 'sentance': // convert to lower case the uppercase the first character in the string
-			case 'capitalize': // for mySource matrix compatibility
-				return function($input) {
-					$replace = function( $matches ) {
-						return $matches[1].strtoupper($matches[2]);
-					}
-
-				       	preg_replace_callback( '`(?<=^|[.?!])(\s+)([a-z])(?=[a-z]*)`i',$replace,$input);
-				};
-				break;
-
-			case 'space': // convert underscores to spaces
-				return function($input) { return str_replace('_',' ',$input); };
-				break;
-
-			case 'text':
-			case 'plaintext': // make string plain text
+			case 'text': // make string plain text
+			case 'plaintext':
 				$stripcomments = get_kwdmod_func('stripcomments');
 				$stripstyle = get_kwdmod_func('stripstyle');
 				$stripscript = get_kwdmod_func('stripscript');
@@ -710,8 +917,10 @@ function get_kwdmod_func( $modifier_parts )
 				return function($input) { return preg_replace( '/(?:\/\/[\t ]*)?<!\[CDATA\[.*?\]\]>/is' , '' , $input ); };
 				break;
 
+//			case 'titleize': see 'heading'
+
 			case 'trim': // remove white space from begining and end of string
-				return function($input) { return trim($input); }; }
+				return function($input) { return trim($input); };
 				break;
 
 			case 'underscore': // convert spaces to underscores
@@ -729,6 +938,10 @@ function get_kwdmod_func( $modifier_parts )
 			case 'urlencode':
 				return function($input) { return  urlencode($replace); };
 				break;
+
+//			case 'words': see 'maxwords' & 'maxsentances'
+
+//			case 'words': see maxsentances & maxwords
 		}
 	}
 	return function( $input ) { return $input; };
