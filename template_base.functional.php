@@ -196,7 +196,7 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 	 *	   populated template is returned
 	 */
 	return function( $tmpl ) use ( $kwd_regex , $mod_delim_regex , $mod_param_delim_regex , $fix_case )
-    {
+	{
 
 		if( !is_string($tmpl) || $tmpl == '' )
 		{
@@ -817,6 +817,23 @@ function get_kwdmod_func( $modifier_parts )
 							};
 						}
 					}
+				}
+				break;
+
+			case 'replace':
+				if( $action1 !== false && $action1 != '' )
+				{
+					if( $action2 === false )
+					{
+						$action2 = '';
+					}
+					return function($input) use ( $action1 , $action2 ) {
+						if( is_string($input) || is_numeric($input) )
+						{
+							return str_replace( $action1 , $action2 , $input );
+						}
+						return '';
+					};
 				}
 				break;
 
