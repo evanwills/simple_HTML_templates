@@ -163,13 +163,14 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 	if( $case_sensitive !== true )
 	{
 		// if not case sensitive make all keywords upper case
-		$fix_case = function( &$input ) {
+		$fix_case = function( $input ) {
+			$output = array();
 			foreach( $input as $key => $value )
 			{
 				$key_ = strtoupper($key);
-				$input[$key_] = $value;
-				unset($input[$key],$key_);
+				$output[$key_] = $value;
 			}
+			return $output;
 		};
 	}
 	else
@@ -203,6 +204,10 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 			// $tmpl was not a valid template, just return an empty string
 			// when populating
 			return function( $input_array ) { return ''; };
+		}
+		if( is_file($tmpl) && is_readable($tmpl) )
+		{
+			$tmpl = file_get_contents($tmpl);
 		}
 
 		if( preg_match_all( $kwd_regex , $tmpl , $keywords , PREG_SET_ORDER ) )
@@ -286,6 +291,7 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 			return function( $input_array ) use ( $tmpl ) { return $tmpl; };
 		}
 
+
 		/**
 		 * @function populate_template() takes an array of strings where the
 		 *	     key matches keywords in the template and the values are
@@ -318,7 +324,7 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 
 			// if template is not case sensitive, make input keywords case
 			// insensitive too
-			$fix_case($input_array);
+			$input_array = $fix_case($input_array);
 
 			foreach( $kwd_array as $key => $value )
 			{
