@@ -639,14 +639,7 @@ function get_kwdmod_func( $modifier_parts )
 			case 'htmlspecialchars':
 			case 'htmlentities':
 			case 'escapehtml':
-				if( $action1 == 'true' || $action1 == 'double' )
-				{
-					return function( $input ) { return htmlentities( $input , ENT_COMPAT | ENT_XHTML , 'UTF-8' , true ); };
-				}
-				else
-				{
-					return function( $input ) { return htmlentities($input); };
-				}
+				return function( $input ) { return htmlentities($input); };
 				break;
 //			case 'id' see 'csssafe'
 
