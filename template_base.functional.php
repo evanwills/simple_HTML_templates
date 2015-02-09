@@ -282,7 +282,7 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 					$kwd_array[$keyword][$keyword_str] = $mod_func;
 				}
 			}
-			$fix_case($kwd_array);
+			$kwd_array = $fix_case($kwd_array);
 		}
 		else
 		{
@@ -314,7 +314,6 @@ function get_kwds_extract_func( $kwd_delim = '{' , $mod_delim = '^' , $mod_param
 		 */
 		return function( $input_array = array() ) use ( $tmpl , $kwd_array , $fix_case )
 		{
-
 			if( !is_array($input_array) )
 			{
 				die( '$input_array MUST be an array. '.gettype($input_array).' given.' );
@@ -638,8 +637,16 @@ function get_kwdmod_func( $modifier_parts )
 				break;
 
 			case 'htmlspecialchars':
+			case 'htmlentities':
 			case 'escapehtml':
-				return function( $input ) { return htmlspecialchars($input); };
+				if( $action1 == 'true' || $action1 == 'double' )
+				{
+					return function( $input ) { return htmlentities( $input , ENT_COMPAT | ENT_XHTML , 'UTF-8' , true ); };
+				}
+				else
+				{
+					return function( $input ) { return htmlentities($input); };
+				}
 				break;
 //			case 'id' see 'csssafe'
 
